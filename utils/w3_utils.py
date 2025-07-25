@@ -5,6 +5,7 @@ encoding constructor arguments, and deploying and verifying contracts on Ethersc
 """
 import json
 import os
+import time
 import tomllib
 from time import sleep
 
@@ -28,10 +29,10 @@ else:
 
 # Load essential environment variables
 _PRIVATE_KEY = os.getenv('PRIVATE_KEY')
-CHAIN_ID = int(os.getenv('CHAIN_ID', 11155111))  # Default to Sepolia testnet
 ACCOUNT1 = w3.to_checksum_address(os.getenv('ACCOUNT1'))
 ETHERSCAN_API_KEY = os.getenv('ETHERSCAN_API_KEY')
-BASE_URL = "https://api.etherscan.io/v2/api"
+CHAIN_ID = int(os.getenv("CHAIN_ID", 11155111))  # Default to Sepolia testnet
+BASE_URL = f"https://api.etherscan.io/v2/api?chainid={CHAIN_ID}"
 
 # Constants used as keys in transactions and API payloads
 KEY_abi = 'abi'
@@ -51,7 +52,7 @@ def compile_contract(contract_path: str, version: str, contract_name: str = None
         contract_path (str): Relative Path to the Solidity contract file.
         version (str): Version of the Solidity compiler to use. 0.8.26
         contract_name (str, optional): Name of the contract to compile. Defaults to None.
-    Returns:
+    Returns:  contract_name,
         dict: Compiled contract interface containing ABI and bytecode.
     """
     if version not in (v.public for v in solcx.get_installed_solc_versions()):
@@ -74,17 +75,17 @@ def compile_contract(contract_path: str, version: str, contract_name: str = None
     # Compile the contract if no remappings were found or compilation failed
     if not compiled_sol:
         compiled_sol = solcx.compile_source(contract_source)
-
-    # Determine the contract name if not provided
-    if contract_name is None:  # Take the first contract if no name is provided
-        contract_name = next(iter(compiled_sol))
-    else:
-        contract_name = f'<stdin>:{contract_name}'
+        # compiled_sol = solcx.compile_files([contract_path], output_values=["abi", "bin"])
+        if contract_name:
+            contract_name = next(key for key in compiled_sol if key.endswith(f":{contract_name}"))
+        else:
+            # If no name provided, pick the first contract in the compiled file
+            contract_name = next(iter(compiled_sol))
 
     # Extract the compiled contract interface
     contract_interface = compiled_sol[contract_name]
     print(f'Compiled {contract_path} for contract {contract_name}')
-    return contract_interface
+    return contract_name, contract_interface
 
 
 def send_tx(transaction, build_tx=True):
@@ -173,7 +174,7 @@ def load_verified_contract(
             abi = json.load(f)
     else:
         # Fetch from Etherscan
-        url = f"{BASE_URL}?module=contract&action=getabi&chainid={CHAIN_ID}&address={contract_address}&apikey={apikey}"
+        url = f"{BASE_URL}&module=contract&action=getabi&address={contract_address}&apikey={apikey}"
         response = requests.get(url)
         data = response.json()
         if data["status"] != "1":
@@ -195,7 +196,7 @@ def load_deployed_contract(
     Loads a deployed contract by compiling its source code and associating it with the given address.
     Returns: web3.contract.Contract: A Web3 contract object for interacting with the deployed contract.
     """
-    contract_interface = compile_contract(contract_path, version, contract_name)
+    _, contract_interface = compile_contract(contract_path, version, contract_name)
     contract_address = w3.to_checksum_address(contract_address)
     return w3.eth.contract(address=contract_address, abi=contract_interface[KEY_abi])
 
@@ -224,10 +225,8 @@ def deploy_and_verify(
     if not os.path.exists(flattened_path):
         raise Exception(f"Can NOT find source code in {flattened_path}, Please check")
 
-    contract_interface = compile_contract(contract_path, version, contract_name)
+    contract_name, contract_interface = compile_contract(contract_path, version, contract_name)
     full_version_string = f"v{solcx.get_solc_version(with_commit_hash=True)}"
-    if contract_name is None:  # Take the first contract if no name is provided
-        contract_name = next(iter(contract_interface))
 
     if contract_address:
         print(f"Preparing to verify contract at address {contract_address}")
@@ -246,24 +245,24 @@ def deploy_and_verify(
     with open(flattened_path, "rb") as file:
         source_code = file.read()
 
-    encoded_args = encode_constructor_args(contract_interface[KEY_abi], constructor_args)
     payload = {
-        'chainid': CHAIN_ID,  # should be chainid not chainId
         "action": "verifysourcecode",
         "apikey": ETHERSCAN_API_KEY,
         "codeformat": "solidity-single-file",
         "compilerversion": full_version_string,
-        "constructorArguements": encoded_args,  # note the spelling mistake in Etherscan API!
         "contractaddress": contract_address,
-        "contractname": contract_name,
+        "contractname": contract_name.split(":")[-1],  # e.g. "<stdin>:EventEmitter" → "EventEmitter",
         "licenseType": 3,  # MIT
         "module": "contract",
         "optimizationUsed": 1,
         "runs": 200,
         "sourceCode": source_code,
     }
-    print(f"Verifying contract payload {payload}")
+    if constructor_args:
+        payload["constructorArguments"] = encode_constructor_args(contract_interface[KEY_abi], constructor_args)
+    print(f"Verifying the contract using payload {payload}")
 
+    time.sleep(20)
     resp = requests.post(BASE_URL, data=payload)
     result = resp.json()
     print("Initial response:", result)
@@ -292,6 +291,7 @@ def deploy_and_verify(
         elif "Pending" in status["result"]:
             print("🔄 Verification is still pending, waiting...")
         else:
+
             raise Exception("❌ Verification failed: " + status["result"])
 
     return w3.eth.contract(address=contract_address, abi=contract_interface[KEY_abi])

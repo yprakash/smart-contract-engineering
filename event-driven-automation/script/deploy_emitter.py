@@ -4,7 +4,8 @@ contract_address = ''
 src_path = './event-driven-automation/src/'
 if contract_address:
     print('Assigning emit_contract object to address', contract_address)
-    emit_contract = load_deployed_contract(contract_address, src_path + 'EventEmitter.sol', '0.8.26')
+    emit_contract = deploy_and_verify(src_path + 'EventEmitter.sol', '0.8.26', contract_address=contract_address)
+    # emit_contract = load_deployed_contract(contract_address, src_path + 'EventEmitter.sol', '0.8.26')
 else:
     emit_contract = deploy_and_verify(src_path + 'EventEmitter.sol', '0.8.26')
 
