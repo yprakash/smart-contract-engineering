@@ -36,16 +36,25 @@ BASE_URL = f"https://api.etherscan.io/v2/api?chainid={CHAIN_ID}"
 
 # Constants used as keys in transactions and API payloads
 KEY_abi = 'abi'
+KEY_bin = "bin"
 KEY_chainId = 'chainId'
 KEY_contractAddress = 'contractAddress'
 KEY_from = 'from'
+KEY_metadata = "metadata"
 KEY_nonce = 'nonce'
 KEY_status = 'status'
 KEY_to = 'to'
-SLEEP_TIME = 2  # Time to wait between retries (in seconds)
+SLEEP_TIME = 5  # Time to wait between retries (in seconds)
 
 
-def compile_contract(contract_path: str, version: str, contract_name: str = None):
+def compile_contract(
+        contract_path: str,
+        version: str,
+        contract_name: str = None,
+        output_values: list = None,
+        optimize: bool = True,
+        optimizer_runs: int = 200
+):
     """
     Compiles a Solidity contract using the specified version of the Solidity compiler.
     Args:
@@ -55,14 +64,17 @@ def compile_contract(contract_path: str, version: str, contract_name: str = None
     Returns:  contract_name,
         dict: Compiled contract interface containing ABI and bytecode.
     """
-    if version not in (v.public for v in solcx.get_installed_solc_versions()):
-        solcx.install_solc(version)
-        print(f"Installed solc version {version}")
-    solcx.set_solc_version(version=version)
-    with open(contract_path, 'r') as file:
+    remove_fields = []
+    if output_values is None:
+        output_values = [KEY_abi, KEY_bin]  # Default output values for compilation
+    if KEY_metadata not in output_values:
+        output_values.append(KEY_metadata)  # Include metadata for better debugging and actual compiler version used
+        remove_fields.append(KEY_metadata)
+
+    with open(contract_path, 'r', encoding="utf-8") as file:
         contract_source = file.read()
 
-    compiled_sol = None
+    remappings = None
     # Check for remappings in foundry.toml if it exists
     if os.path.exists("foundry.toml"):
         with open("foundry.toml", "rb") as f:
@@ -70,22 +82,33 @@ def compile_contract(contract_path: str, version: str, contract_name: str = None
             remappings = foundry_config["profile"]["default"].get("remappings", [])
             if remappings:
                 print('found remappings in foundry.toml:', remappings)
-                compiled_sol = solcx.compile_source(contract_source, import_remappings=remappings)
 
-    # Compile the contract if no remappings were found or compilation failed
-    if not compiled_sol:
-        compiled_sol = solcx.compile_source(contract_source)
-        # compiled_sol = solcx.compile_files([contract_path], output_values=["abi", "bin"])
-        if contract_name:
-            contract_name = next(key for key in compiled_sol if key.endswith(f":{contract_name}"))
-        else:
-            # If no name provided, pick the first contract in the compiled file
-            contract_name = next(iter(compiled_sol))
-
-    # Extract the compiled contract interface
-    contract_interface = compiled_sol[contract_name]
+    compiled_sol = solcx.compile_source(
+        contract_source,
+        import_remappings=remappings,
+        output_values=output_values,
+        solc_version=version,
+        optimize=optimize,
+        optimize_runs=optimizer_runs
+    )
+    if contract_name:
+        contract_name = next(key for key in compiled_sol if key.endswith(f":{contract_name}"))
+    else:
+        # If no name provided, pick the first contract in the compiled file
+        contract_name = next(iter(compiled_sol))
     print(f'Compiled {contract_path} for contract {contract_name}')
-    return contract_name, contract_interface
+
+    metadata = json.loads(compiled_sol[contract_name][KEY_metadata])
+    result = {
+        "contract_name": contract_name.split(":")[-1],
+        "compiler_version": "v" + metadata["compiler"]["version"],
+        "optimize": 1 if metadata["settings"]["optimizer"]["enabled"] else 0,
+        "optimizer_runs": metadata["settings"]["optimizer"]["runs"],
+        "contract_source": contract_source
+    }
+    result.update({k: v for k, v in compiled_sol[contract_name].items() if k not in remove_fields})
+    print(result)
+    return result
 
 
 def send_tx(transaction, build_tx=True):
@@ -196,7 +219,7 @@ def load_deployed_contract(
     Loads a deployed contract by compiling its source code and associating it with the given address.
     Returns: web3.contract.Contract: A Web3 contract object for interacting with the deployed contract.
     """
-    _, contract_interface = compile_contract(contract_path, version, contract_name)
+    contract_interface = compile_contract(contract_path, version, contract_name)
     contract_address = w3.to_checksum_address(contract_address)
     return w3.eth.contract(address=contract_address, abi=contract_interface[KEY_abi])
 
@@ -221,17 +244,15 @@ def deploy_and_verify(
     Returns:
         web3.eth.Contract: Web3 contract object for the deployed contract.
     """
-    flattened_path = contract_path.replace('src/', 'flat/flatten_')
-    if not os.path.exists(flattened_path):
-        raise Exception(f"Can NOT find source code in {flattened_path}, Please check")
+    # flattened_path = contract_path.replace('src/', 'flat/flatten_')
+    # if not os.path.exists(flattened_path):
+    #     raise Exception(f"Can NOT find source code in {flattened_path}, Please check")
 
-    contract_name, contract_interface = compile_contract(contract_path, version, contract_name)
-    full_version_string = f"v{solcx.get_solc_version(with_commit_hash=True)}"
-
+    compiled = compile_contract(contract_path, version, contract_name)
     if contract_address:
         print(f"Preparing to verify contract at address {contract_address}")
     else:
-        contract = w3.eth.contract(abi=contract_interface[KEY_abi], bytecode=contract_interface['bin'])
+        contract = w3.eth.contract(abi=compiled[KEY_abi], bytecode=compiled[KEY_bin])
         if constructor_args:
             tx_receipt = send_tx(contract.constructor(*constructor_args))
         else:
@@ -240,29 +261,26 @@ def deploy_and_verify(
         print('========== ========== NOTE ========== ==========')
         print(f"Deployed {contract_path} Please take a note of contract_address: {contract_address}")
         print('========================================')
-
-    print(f"Reading flattened_path from {flattened_path}")
-    with open(flattened_path, "rb") as file:
-        source_code = file.read()
+        # Once deployed on blockchain
+        time.sleep(30)
 
     payload = {
         "action": "verifysourcecode",
-        "apikey": ETHERSCAN_API_KEY,
         "codeformat": "solidity-single-file",
-        "compilerversion": full_version_string,
-        "contractaddress": contract_address,
-        "contractname": contract_name.split(":")[-1],  # e.g. "<stdin>:EventEmitter" → "EventEmitter",
         "licenseType": 3,  # MIT
         "module": "contract",
-        "optimizationUsed": 1,
-        "runs": 200,
-        "sourceCode": source_code,
+        "contractaddress": contract_address,
+        "contractname": compiled["contract_name"],
+        "compilerversion": compiled["compiler_version"],
+        "optimizationUsed": compiled["optimize"],
+        "runs": compiled["optimizer_runs"],
+        "sourceCode": compiled["contract_source"],
+        "apikey": ETHERSCAN_API_KEY
     }
     if constructor_args:
-        payload["constructorArguments"] = encode_constructor_args(contract_interface[KEY_abi], constructor_args)
+        payload["constructorArguments"] = encode_constructor_args(compiled[KEY_abi], constructor_args)
     print(f"Verifying the contract using payload {payload}")
 
-    time.sleep(20)
     resp = requests.post(BASE_URL, data=payload)
     result = resp.json()
     print("Initial response:", result)
@@ -276,22 +294,23 @@ def deploy_and_verify(
     for _ in range(10):
         sleep(SLEEP_TIME)
         status_payload = {
-            "apikey": ETHERSCAN_API_KEY,
             "module": "contract",
             "action": "checkverifystatus",
             "guid": guid,
+            "apikey": ETHERSCAN_API_KEY
         }
         status_resp = requests.get(BASE_URL, params=status_payload)
         status = status_resp.json()
         print("Verification check:", status)
 
         if status[KEY_status] == "1":
-            print("✅ Contract verified!")
+            print("✅ Contract verified! status:", status)
             break
-        elif "Pending" in status["result"]:
+        if "Pending" in status["result"]:
             print("🔄 Verification is still pending, waiting...")
+            time.sleep(SLEEP_TIME)
         else:
-
+            print("❌ Verification failed:", status)
             raise Exception("❌ Verification failed: " + status["result"])
 
-    return w3.eth.contract(address=contract_address, abi=contract_interface[KEY_abi])
+    return w3.eth.contract(address=contract_address, abi=compiled[KEY_abi])
