@@ -6,18 +6,17 @@ encoding constructor arguments, and deploying and verifying contracts on Ethersc
 import json
 import os
 import time
-import tomllib
 from time import sleep
 
 import requests
-import solcx
 from dotenv import load_dotenv
 from eth_abi import encode
 from eth_utils import to_hex
 from web3 import Web3
 
+from utils.contract_utils import compile_contract, flatten_contract
+
 load_dotenv('.env')
-load_dotenv('.env.sepolia')
 
 # Initialize Web3 connection
 w3 = Web3(Web3.HTTPProvider(os.getenv('PROVIDER_URL')))
@@ -45,70 +44,6 @@ KEY_nonce = 'nonce'
 KEY_status = 'status'
 KEY_to = 'to'
 SLEEP_TIME = 5  # Time to wait between retries (in seconds)
-
-
-def compile_contract(
-        contract_path: str,
-        version: str,
-        contract_name: str = None,
-        output_values: list = None,
-        optimize: bool = True,
-        optimizer_runs: int = 200
-):
-    """
-    Compiles a Solidity contract using the specified version of the Solidity compiler.
-    Args:
-        contract_path (str): Relative Path to the Solidity contract file.
-        version (str): Version of the Solidity compiler to use. 0.8.26
-        contract_name (str, optional): Name of the contract to compile. Defaults to None.
-    Returns:  contract_name,
-        dict: Compiled contract interface containing ABI and bytecode.
-    """
-    remove_fields = []
-    if output_values is None:
-        output_values = [KEY_abi, KEY_bin]  # Default output values for compilation
-    if KEY_metadata not in output_values:
-        output_values.append(KEY_metadata)  # Include metadata for better debugging and actual compiler version used
-        remove_fields.append(KEY_metadata)
-
-    with open(contract_path, 'r', encoding="utf-8") as file:
-        contract_source = file.read()
-
-    remappings = None
-    # Check for remappings in foundry.toml if it exists
-    if os.path.exists("foundry.toml"):
-        with open("foundry.toml", "rb") as f:
-            foundry_config = tomllib.load(f)
-            remappings = foundry_config["profile"]["default"].get("remappings", [])
-            if remappings:
-                print('found remappings in foundry.toml:', remappings)
-
-    compiled_sol = solcx.compile_source(
-        contract_source,
-        import_remappings=remappings,
-        output_values=output_values,
-        solc_version=version,
-        optimize=optimize,
-        optimize_runs=optimizer_runs
-    )
-    if contract_name:
-        contract_name = next(key for key in compiled_sol if key.endswith(f":{contract_name}"))
-    else:
-        # If no name provided, pick the first contract in the compiled file
-        contract_name = next(iter(compiled_sol))
-    print(f'Compiled {contract_path} for contract {contract_name}')
-
-    metadata = json.loads(compiled_sol[contract_name][KEY_metadata])
-    result = {
-        "contract_name": contract_name.split(":")[-1],
-        "compiler_version": "v" + metadata["compiler"]["version"],
-        "optimize": 1 if metadata["settings"]["optimizer"]["enabled"] else 0,
-        "optimizer_runs": metadata["settings"]["optimizer"]["runs"],
-        "contract_source": contract_source
-    }
-    result.update({k: v for k, v in compiled_sol[contract_name].items() if k not in remove_fields})
-    print(result)
-    return result
 
 
 def send_tx(transaction, build_tx=True):
@@ -219,7 +154,7 @@ def load_deployed_contract(
     Loads a deployed contract by compiling its source code and associating it with the given address.
     Returns: web3.contract.Contract: A Web3 contract object for interacting with the deployed contract.
     """
-    contract_interface = compile_contract(contract_path, version, contract_name)
+    contract_interface = compile_contract(contract_path, version, contract_name, output_values=[KEY_abi])
     contract_address = w3.to_checksum_address(contract_address)
     return w3.eth.contract(address=contract_address, abi=contract_interface[KEY_abi])
 
@@ -244,10 +179,6 @@ def deploy_and_verify(
     Returns:
         web3.eth.Contract: Web3 contract object for the deployed contract.
     """
-    # flattened_path = contract_path.replace('src/', 'flat/flatten_')
-    # if not os.path.exists(flattened_path):
-    #     raise Exception(f"Can NOT find source code in {flattened_path}, Please check")
-
     compiled = compile_contract(contract_path, version, contract_name)
     if contract_address:
         print(f"Preparing to verify contract at address {contract_address}")
@@ -274,7 +205,8 @@ def deploy_and_verify(
         "compilerversion": compiled["compiler_version"],
         "optimizationUsed": compiled["optimize"],
         "runs": compiled["optimizer_runs"],
-        "sourceCode": compiled["contract_source"],
+        # "sourceCode": compiled["contract_source"],
+        "sourceCode": flatten_contract(contract_path),
         "apikey": ETHERSCAN_API_KEY
     }
     if constructor_args:

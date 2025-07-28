@@ -1,0 +1,3 @@
+[submodule "event-driven-automation/lib/chainlink-brownie-contracts"]
+	path = event-driven-automation/lib/chainlink-brownie-contracts
+	url = https://github.com/smartcontractkit/chainlink-brownie-contracts
