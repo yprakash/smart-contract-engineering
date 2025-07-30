@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT
+// @author: yprakash
+// https://sepolia.etherscan.io/address/0x377Ba277c7223c7aFB2cb95b226479347A6BB071
+
 pragma solidity ^0.8.26;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
@@ -63,7 +66,7 @@ contract CCIPTokenSender is Ownable {
             tokenAmounts: tokenAmounts,  // The array of token amounts to transfer
             feeToken: address(LINK_TOKEN),  // The token used to pay for the CCIP fees (LINK)
             extraArgs: Client._argsToBytes(Client.EVMExtraArgsV2({  // Extra arguments for the message
-                // allowOutOfOrderExecution: false,  // Indicates that the message should not be executed out of order
+                allowOutOfOrderExecution: false,  // Indicates that the message should not be executed out of order
                 gasLimit: 0  // Gas limit for the callback on the destination chain. Setting gasLimit to 0 because:
                 // 1. This is a token-only transfer to an EOA (external owned account)
                 // 2. No contract execution is happening on the receiving end
