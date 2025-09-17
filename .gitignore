@@ -1,0 +1,48 @@
+# Ignore Python cache and bytecode files
+__pycache__/
+*.pyc
+__pypackages__/
+
+# Ignore sensitive data files
+.env
+.env.*
+
+# Ignore IDE specific files (e.g., PyCharm, VSCode)
+.vscode/
+.idea/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+*.log
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
