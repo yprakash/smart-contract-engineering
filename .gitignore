@@ -11,6 +11,24 @@ __pypackages__/
 .vscode/
 .idea/
 
+# Foundry forge/solidity temp files
+.abi_cache*
+cache/
+lib/
+out/
+flat/
+node_modules/
+*/cache/
+*/lib/
+*/out/
+*/flat/
+*/node_modules/
+*/*/cache/
+*/*/lib/
+*/*/out/
+*/*/flat/
+*/*/node_modules/
+
 # Distribution / packaging
 .Python
 build/
@@ -19,7 +37,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
