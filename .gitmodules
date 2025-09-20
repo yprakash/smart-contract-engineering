@@ -1,0 +1,3 @@
+[submodule "dapps/buy-coffee/lib/chainlink-brownie-contracts"]
+	path = dapps/buy-coffee/lib/chainlink-brownie-contracts
+	url = https://github.com/smartcontractkit/chainlink-brownie-contracts

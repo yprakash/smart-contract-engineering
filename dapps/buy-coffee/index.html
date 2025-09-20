@@ -3,11 +3,26 @@
     <head>
         <title>Buy Me a Coffee</title>
     </head>
-    <body>
-        <button id="connectButton">
-            Connect
-        </button>
-    </body>
+    <body><table cellpadding="10">
+        <tr>
+            <td><button id="connectButton">Connect</button></td>
+        </tr>
+        <tr>
+            <td>
+                <button id="balanceButton">Get Balance</button>
+                <span id="balanceValue">--</span>
+            </td>
+        </tr>
+        <!-- Form - "buy coffee" or "fund" -->
+        <tr><td>
+            <label for="ethAmount">ETH Amount:</label>
+            <input type="text" id="ethAmount" name="ethAmount" placeholder="0.1">
+            <button id="fundButton">Buy Coffee</button>
+        </td></tr>
+        <tr>
+            <td><button id="withdrawButton">Withdraw</button></td>
+        </tr>
+    </table></body>
     <script src="./index-js.js" type="module">
     </script>
 </html>

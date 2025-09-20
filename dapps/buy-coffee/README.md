@@ -39,24 +39,46 @@ Functions implemented in `index-js.js`:
 - Utility: `getCurrentChain()` → Ensures viem connects to Anvil’s chain.
 
 ---
-### 🚀 Step 1. Start Local Blockchain
-In one terminal tab:
+### 🚀 Step 1. Setup
+```bash
+forge init --no-commit --force
+forge build
+forge install smartcontractkit/chainlink-brownie-contracts@1.3.0 --no-commit
+```
+
+### 🚀 Step 2. Start Local Blockchain
+Start Anvil with dump-state flag:
+```bash
+anvil --dump-state buy-coffee-anvil-$(date +%d%H%M).json
+```
+- This starts Anvil normally, with all accounts and RPC available.
+- You can deploy, interact, test your dApp as usual.
+- When you are done, stop Anvil (`Ctrl+C`).
+- At shutdown, Anvil writes the current chain state to buy-coffee-anvil.json.
+- Next time, load it back:
+  ```bash
+  anvil --load-state buy-coffee-anvil.json
+  ```
+**⚡ Tip**: Think of --dump-state like “record everything while I run” → it doesn’t snapshot mid-run; it saves at shutdown.
+
+OR else, if you **don't want to reuse state**, In one terminal tab:
 ```bash
 anvil
 ```
 - Runs at http://127.0.0.1:8545
 - Provides 10 test accounts (10,000 ETH each)
 
-### 🚀 Step 2. Deploy the Smart Contract
+### 🚀 Step 3. Deploy the Smart Contract
 In another terminal:
 ```bash
 forge script script/DeployFundMe.s.sol:DeployFundMe \
   --rpc-url http://127.0.0.1:8545 \
+  --private-key $(DEFAULT_ANVIL_KEY) \
   --broadcast
 ```
 Copy the deployed contract address — you’ll need it in constants-js.js.
 
-### 🚀 Step 3. Save Deployment (Optional Snapshot)
+### 🚀 Step 4. Save Deployment (Optional Snapshot)
 Snapshot the state after deployment:
 ```bash
 anvil --dump-state buy-coffee-anvil.json
@@ -66,7 +88,7 @@ Later, instead of redeploying:
 anvil --load-state buy-coffee-anvil.json
 ```
 
-### 🎮 Step 4. Interact via Frontend
+### 🎮 Step 5. Interact via Frontend
 #### 1. Setup constants-js.js
 Create a file in your project root:
 ```js
