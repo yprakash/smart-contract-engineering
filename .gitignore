@@ -4,30 +4,21 @@ __pycache__/
 __pypackages__/
 
 # Ignore sensitive data files
-.env
+**/.env
 .env.*
 
 # Ignore IDE specific files (e.g., PyCharm, VSCode)
-.vscode/
-.idea/
+**/.vscode
+**/.idea
 
 # Foundry forge/solidity temp files
 .abi_cache*
-cache/
-lib/
-out/
-flat/
-node_modules/
-*/cache/
-*/lib/
-*/out/
-*/flat/
-*/node_modules/
-*/*/cache/
-*/*/lib/
-*/*/out/
-*/*/flat/
-*/*/node_modules/
+**/broadcast
+**/cache
+**/flat
+**/lib
+**/node_modules
+**/out
 
 # Distribution / packaging
 .Python
